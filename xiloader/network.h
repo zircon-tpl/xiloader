@@ -36,6 +36,19 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 namespace xiloader
 {
+    // In VerifyAccount - response codes to login attempts
+    enum class AccountResult
+    {
+        Login_Success = 0x001,
+        Login_Error = 0x002,
+        Create_Success = 0x003,
+        Create_Taken = 0x004,
+        Create_Disabled = 0x008,
+        Create_Error = 0x009,
+        PassChange_Request = 0x005,
+        PassChange_Success = 0x006,
+        PassChange_Error = 0x007,
+    };
     /**
      * @brief Socket object used to hold various important information.
      */

@@ -310,35 +310,46 @@ namespace xiloader
         recv(sock->s, recvBuffer, 16, 0);
 
         /* Handle the obtained result.. */
-        switch (recvBuffer[0])
+        switch (static_cast<AccountResult>(recvBuffer[0]))
         {
-        case 0x0001: // Success (Login)
+        case AccountResult::Login_Success: // 0x001
             xiloader::console::output(xiloader::color::success, "Successfully logged in as %s!", g_Username.c_str());
             sock->AccountId = *(UINT32*)(recvBuffer + 0x01);
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
             return true;
 
-        case 0x0002: // Error (Login)
+        case AccountResult::Login_Error: // 0x002
             xiloader::console::output(xiloader::color::error, "Failed to login. Invalid username or password.");
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
             return false;
 
-        case 0x0003: // Success (Create Account)
+        case AccountResult::Create_Success: // 0x003
             xiloader::console::output(xiloader::color::success, "Account successfully created!");
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
             return false;
 
-        case 0x0004: // Error (Create Account)
-            xiloader::console::output(xiloader::color::error, "Failed to create the new account. Username already taken.");
+        case AccountResult::Create_Taken: // 0x004
+            xiloader::console::output(xiloader::color::error, "Failed to create account. Username already taken.");
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
             return false;
 
-        case 0x0005: // Request for updated password to change to.
-        {
+        case AccountResult::Create_Disabled: // 0x008
+            xiloader::console::output(xiloader::color::error, "Failed to create account. This server does not allow account creation through the loader.");
+            closesocket(sock->s);
+            sock->s = INVALID_SOCKET;
+            return false;
+
+        case AccountResult::Create_Error: // 0x009
+            xiloader::console::output(xiloader::color::error, "Failed to created account, a server-side error occurred.");
+            closesocket(sock->s);
+            sock->s = INVALID_SOCKET;
+            return false;
+
+        case AccountResult::PassChange_Request: // Request for updated password to change to.
             xiloader::console::output(xiloader::color::success, "Log in verified for user %s.", g_Username.c_str());
             std::string confirmed_password = "";
             do
@@ -368,9 +379,9 @@ namespace xiloader
             recv(sock->s, recvBuffer, 16, 0);
 
             /* Handle the final result. */
-            switch (recvBuffer[0])
+            switch (static_cast<AccountResult>(recvBuffer[0]))
             {
-            case 0x0006: // Success (Changed Password)
+            case AccountResult::PassChange_Success: // Success (Changed Password)
                 xiloader::console::output(xiloader::color::success, "Password updated successfully!");
                 std::cout << std::endl;
                 g_Password.clear();
@@ -378,7 +389,7 @@ namespace xiloader
                 sock->s = INVALID_SOCKET;
                 return false;
 
-            case 0x0007: // Error (Changed Password)
+            case AccountResult::PassChange_Error: // Error (Changed Password)
                 xiloader::console::output(xiloader::color::error, "Failed to change password.");
                 std::cout << std::endl;
                 g_Password.clear();
@@ -386,7 +397,6 @@ namespace xiloader
                 sock->s = INVALID_SOCKET;
                 return false;
             }
-        }
         }
 
         /* We should not get here.. */

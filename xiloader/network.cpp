@@ -202,7 +202,7 @@ namespace xiloader
      */
     bool network::VerifyAccount(datasocket* sock)
     {
-        static bool bFirstLogin = true;
+        static bool bCanAutoLogin = true;
 
         char recvBuffer[1024] = { 0 };
         char sendBuffer[1024] = { 0 };
@@ -215,12 +215,13 @@ namespace xiloader
         }
 
         /* Determine if we should auto-login.. */
-        bool bUseAutoLogin = !g_Username.empty() && !g_Password.empty() && bFirstLogin;
+        bool bUseAutoLogin = !g_Username.empty() && !g_Password.empty() && bCanAutoLogin;
         if (bUseAutoLogin)
             xiloader::console::output(xiloader::color::lightgreen, "Autologin activated!");
 
         if (!bUseAutoLogin)
         {
+            bCanAutoLogin = false;
             xiloader::console::output("==========================================================");
             xiloader::console::output("What would you like to do?");
             xiloader::console::output("   1.) Login");
@@ -298,7 +299,7 @@ namespace xiloader
         {
             /* User has auto-login enabled.. */
             sendBuffer[0x20] = 0x10;
-            bFirstLogin = false;
+            bCanAutoLogin = false;
         }
 
         /* Copy username and password into buffer.. */
@@ -329,6 +330,7 @@ namespace xiloader
             xiloader::console::output(xiloader::color::success, "Account successfully created!");
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
+            bCanAutoLogin = true;
             return false;
 
         case AccountResult::Create_Taken: // 0x004

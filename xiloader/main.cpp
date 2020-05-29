@@ -44,6 +44,9 @@ DWORD g_HairpinReturnAddress; // Hairpin return address to allow the code cave t
  */
 extern "C"
 {
+    // FFXI is still using gethostbyname and we cannot easily change that behavior
+    // so we will ignore the deprecated method
+    #pragma warning(suppress: 4996)
     hostent* (WINAPI __stdcall * Real_gethostbyname)(const char* name) = gethostbyname;
 }
 
@@ -300,7 +303,9 @@ int __cdecl main(int argc, char* argv[])
     ULONG ulAddress = 0;
     if (xiloader::network::ResolveHostname(g_ServerAddress.c_str(), &ulAddress))
     {
-        g_ServerAddress = inet_ntoa(*((struct in_addr*)&ulAddress));
+        char address[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &ulAddress, address, INET_ADDRSTRLEN);
+        g_ServerAddress = address;
 
         /* Attempt to create socket to server..*/
         xiloader::datasocket sock;

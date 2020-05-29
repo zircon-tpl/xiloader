@@ -44,7 +44,7 @@ namespace xiloader
         struct addrinfo hints;
         memset(&hints, 0x00, sizeof(hints));
 
-        hints.ai_family = AF_UNSPEC;
+        hints.ai_family = AF_INET;
         hints.ai_socktype = SOCK_STREAM;
         hints.ai_protocol = IPPROTO_TCP;
 
@@ -55,6 +55,8 @@ namespace xiloader
             xiloader::console::output(xiloader::color::error, "Failed to obtain remote server information.");
             return 0;
         }
+
+        char localAddress[INET_ADDRSTRLEN];
 
         /* Determine which address is valid to connect.. */
         for (auto ptr = addr; ptr != NULL; ptr->ai_next)
@@ -79,23 +81,23 @@ namespace xiloader
                 return 0;
             }
 
+            // Find connected client address via peer
+            struct sockaddr peer;
+            int peer_len = sizeof(peer);
+            if (getpeername(sock->s, &peer, &peer_len))
+            {
+                xiloader::console::output(xiloader::color::error, "Failed to obtain remote client information.");
+                return 0;
+            }
+
+            inet_ntop(AF_INET, &(((struct sockaddr_in*)&peer)->sin_addr), localAddress, INET_ADDRSTRLEN);
             xiloader::console::output(xiloader::color::info, "Connected to server!");
+
             break;
         }
 
-        std::string localAddress = "";
-
-        /* Attempt to locate the client address.. */
-        char hostname[1024] = { 0 };
-        if (gethostname(hostname, sizeof(hostname)) == 0)
-        {
-            PHOSTENT hostent = NULL;
-            if ((hostent = gethostbyname(hostname)) != NULL)
-                localAddress = inet_ntoa(*(struct in_addr*)*hostent->h_addr_list);
-        }
-
-        sock->LocalAddress = inet_addr(localAddress.c_str());
-        sock->ServerAddress = inet_addr(g_ServerAddress.c_str());
+        inet_pton(AF_INET, localAddress, &sock->LocalAddress);
+        inet_pton(AF_INET, g_ServerAddress.c_str(), &sock->ServerAddress);
 
         return 1;
     }

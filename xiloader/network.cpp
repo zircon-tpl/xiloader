@@ -168,7 +168,6 @@ namespace xiloader
         return true;
     }
 
-
     /**
      * @brief Resolves the given hostname to its long ip format.
      *

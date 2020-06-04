@@ -25,6 +25,8 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "functions.h"
 #include "network.h"
 
+#include <thread>
+
 /* Global Variables */
 xiloader::Language g_Language = xiloader::Language::English; // The language of the loader to be used for polcore.
 std::string g_ServerAddress = "127.0.0.1"; // The server address to connect to.
@@ -64,18 +66,14 @@ __declspec(naked) void HairpinFixCave(void)
 /**
  * @brief Applies the hairpin fix modifications.
  *
- * @param lpParam       Thread param object.
- *
- * @return Non-important return.
+ * @return void
  */
-DWORD ApplyHairpinFixThread(LPVOID lpParam)
+void ApplyHairpinFix()
 {
-    UNREFERENCED_PARAMETER(lpParam);
-
     do
     {
         /* Sleep until we find FFXiMain loaded.. */
-        Sleep(100);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     } while (GetModuleHandleA("FFXiMain.dll") == NULL);
 
     /* Convert server address.. */
@@ -91,7 +89,7 @@ DWORD ApplyHairpinFixThread(LPVOID lpParam)
     if (hairpinAddress == 0)
     {
         xiloader::console::output(xiloader::color::error, "Failed to locate main hairpin hack address!");
-        return 0;
+        return;
     }
 
     // Locate zoning IP change address..
@@ -107,7 +105,7 @@ DWORD ApplyHairpinFixThread(LPVOID lpParam)
     if (zoneChangeAddress == 0)
     {
         xiloader::console::output(xiloader::color::error, "Failed to locate zone change hairpin address!");
-        return 0;
+        return;
     }
 
     /* Apply the hairpin fix.. */
@@ -124,7 +122,6 @@ DWORD ApplyHairpinFixThread(LPVOID lpParam)
     memset((LPVOID)(zoneChangeAddress + 0x06), 0x90, 2);
 
     xiloader::console::output(xiloader::color::success, "Hairpin fix applied!");
-    return 0;
 }
 
 /**
@@ -316,9 +313,10 @@ int __cdecl main(int argc, char* argv[])
                 Sleep(10);
 
             /* Start hairpin hack thread if required.. */
+            std::thread thread_hairpinfix;
             if (bUseHairpinFix)
             {
-                CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ApplyHairpinFixThread, NULL, 0, NULL);
+                thread_hairpinfix = std::thread(ApplyHairpinFix);
             }
 
             /* Create listen servers.. */
@@ -388,6 +386,10 @@ int __cdecl main(int argc, char* argv[])
             g_IsRunning = false;    
             TerminateThread(hFFXiServer, 0);
             TerminateThread(hPolServer, 0);
+            if (thread_hairpinfix.joinable())
+            {
+                thread_hairpinfix.join();
+            }
 
             WaitForSingleObject(hFFXiServer, 1000);
             WaitForSingleObject(hPolServer, 1000);

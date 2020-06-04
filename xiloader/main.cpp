@@ -310,7 +310,9 @@ int __cdecl main(int argc, char* argv[])
         {
             /* Attempt to verify the users account info.. */
             while (!xiloader::network::VerifyAccount(&sock))
-                Sleep(10);
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
 
             /* Start hairpin hack thread if required.. */
             std::thread thread_hairpinfix;
@@ -321,7 +323,8 @@ int __cdecl main(int argc, char* argv[])
 
             /* Create listen servers.. */
             g_IsRunning = true;
-            HANDLE hFFXiServer = CreateThread(NULL, 0, xiloader::network::FFXiServer, &sock, 0, NULL);
+            std::thread thread_ffxiServer(xiloader::network::FFXiDataComm, &sock);
+            //std::thread thead_polServer(xiloader::network::PolServer);
             HANDLE hPolServer = CreateThread(NULL, 0, xiloader::network::PolServer, NULL, 0, NULL);
 
             /* Attempt to create polcore instance..*/
@@ -384,18 +387,18 @@ int __cdecl main(int argc, char* argv[])
 
             /* Cleanup threads.. */
             g_IsRunning = false;    
-            TerminateThread(hFFXiServer, 0);
             TerminateThread(hPolServer, 0);
+            WaitForSingleObject(hPolServer, 1000);
+            CloseHandle(hPolServer);
+
+            xiloader::network::CleanupSocket(&sock, SD_SEND);
+
+            thread_ffxiServer.join();
+
             if (thread_hairpinfix.joinable())
             {
                 thread_hairpinfix.join();
             }
-
-            WaitForSingleObject(hFFXiServer, 1000);
-            WaitForSingleObject(hPolServer, 1000);
-
-            CloseHandle(hFFXiServer);
-            CloseHandle(hPolServer);
         }
     }
     else

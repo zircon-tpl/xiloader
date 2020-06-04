@@ -69,15 +69,6 @@ namespace xiloader
     class network
     {
         /**
-         * @brief Data communication between the local client and the game server.
-         *
-         * @param lpParam       Thread param object.
-         *
-         * @return Non-important return.
-         */
-        static DWORD __stdcall FFXiDataComm(LPVOID lpParam);
-
-        /**
          * @brief Data communication between the local client and the lobby server.
          *
          * @param lpParam       Thread param object.
@@ -87,6 +78,15 @@ namespace xiloader
         static DWORD __stdcall PolDataComm(LPVOID lpParam);
         
     public:
+
+        /**
+         * @brief Data communication between the local client and the game server.
+         *
+         * @param socket        Pointer to communication socket.
+         *
+         * @return void.
+         */
+        static void FFXiDataComm(xiloader::datasocket* socket);
 
         /**
          * @brief Creates a connection on the given port.
@@ -127,15 +127,6 @@ namespace xiloader
          * @return True on success, false otherwise.
          */
         static bool VerifyAccount(datasocket* sock);
-        
-        /**
-         * @brief Starts the data communication between the client and server.
-         *
-         * @param lpParam       Thread param object.
-         *
-         * @return Non-important return.
-         */
-        static DWORD __stdcall FFXiServer(LPVOID lpParam);
 
         /**
          * @brief Starts the local listen server to lobby server communications.
@@ -145,6 +136,16 @@ namespace xiloader
          * @return Non-important return.
          */
         static DWORD __stdcall PolServer(LPVOID lpParam);
+
+        /**
+         * @brief Cleans up a socket via shutdown/close.
+         *
+         * @param socket        Pointer to datasocket containing socket address.
+         * @param how           Shutdown send, recv, or both.
+         *
+         * @return void.
+         */
+        static void CleanupSocket(xiloader::datasocket* socket, int how);
     };
 
 }; // namespace xiloader

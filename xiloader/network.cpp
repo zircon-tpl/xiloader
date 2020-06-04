@@ -21,6 +21,8 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #include "network.h"
 
+#include <thread>
+
 /* Externals */
 extern std::string g_ServerAddress;
 extern std::string g_Username;
@@ -415,9 +417,14 @@ namespace xiloader
      *
      * @return Non-important return.
      */
-    DWORD __stdcall network::FFXiDataComm(LPVOID lpParam)
+    void network::FFXiDataComm(xiloader::datasocket* socket)
     {
-        auto sock = (xiloader::datasocket*)lpParam;
+        /* Attempt to create connection to the server.. */
+        if (!xiloader::network::CreateConnection(socket, "54230"))
+        {
+            xiloader::console::output("Failed connection to Server");
+            return;
+        }
 
         int sendSize = 0;
         char recvBuffer[4096] = { 0 };
@@ -428,15 +435,17 @@ namespace xiloader
             /* Attempt to receive the incoming data.. */
             struct sockaddr_in client;
             unsigned int socksize = sizeof(client);
-            if (recvfrom(sock->s, recvBuffer, sizeof(recvBuffer), 0, (struct sockaddr*)&client, (int*)&socksize) <= 0)
-                continue;
+            if (recvfrom(socket->s, recvBuffer, sizeof(recvBuffer), 0, (struct sockaddr*)&client, (int*)&socksize) == SOCKET_ERROR)
+            {
+                return;
+            }
 
             switch (recvBuffer[0])
             {
             case 0x0001:
                 sendBuffer[0] = 0xA1u;
-                memcpy(sendBuffer + 0x01, &sock->AccountId, 4);
-                memcpy(sendBuffer + 0x05, &sock->ServerAddress, 4);
+                memcpy(sendBuffer + 0x01, &socket->AccountId, 4);
+                memcpy(sendBuffer + 0x05, &socket->ServerAddress, 4);
                 xiloader::console::output(xiloader::color::warning, "Sending account id..");
                 sendSize = 9;
                 break;
@@ -470,22 +479,20 @@ namespace xiloader
                 continue;
 
             /* Send the response buffer to the server.. */
-            auto result = sendto(sock->s, sendBuffer, sendSize, 0, (struct sockaddr*)&client, socksize);
+            auto result = sendto(socket->s, sendBuffer, sendSize, 0, (struct sockaddr*)&client, socksize);
             if (sendSize == 72 || result == SOCKET_ERROR || sendSize == -1)
             {
-                shutdown(sock->s, SD_SEND);
-                closesocket(sock->s);
-                sock->s = INVALID_SOCKET;
+                CleanupSocket(socket, SD_SEND);
 
                 xiloader::console::output("Server connection done; disconnecting!");
-                return 0;
+                return;
             }
 
             sendSize = 0;
-            Sleep(100);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
-        return 0;
+        return;
     }
 
     /**
@@ -560,26 +567,6 @@ namespace xiloader
     }
 
     /**
-     * @brief Starts the data communication between the client and server.
-     *
-     * @param lpParam   Thread param object.
-     *
-     * @return Non-important return.
-     */
-    DWORD __stdcall network::FFXiServer(LPVOID lpParam)
-    {
-        /* Attempt to create connection to the server.. */
-        if (!xiloader::network::CreateConnection((xiloader::datasocket*)lpParam, "54230"))
-            return 1;
-
-        /* Attempt to start data communication with the server.. */
-        CreateThread(NULL, 0, xiloader::network::FFXiDataComm, lpParam, 0, NULL);
-        Sleep(200);
-
-        return 0;
-    }
-
-    /**
      * @brief Starts the local listen server to lobby server communications.
      *
      * @param lpParam   Thread param object.
@@ -613,6 +600,13 @@ namespace xiloader
 
         closesocket(sock);
         return 0;
+    }
+
+    void xiloader::network::CleanupSocket(xiloader::datasocket* socket, int how)
+    {
+        shutdown(socket->s, how);
+        closesocket(socket->s);
+        socket->s = INVALID_SOCKET;
     }
 
 }; // namespace xiloader

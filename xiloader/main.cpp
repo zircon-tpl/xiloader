@@ -306,6 +306,8 @@ int __cdecl main(int argc, char* argv[])
 
         /* Attempt to create socket to server..*/
         xiloader::datasocket sock;
+        SOCKET pol_socket;
+        SOCKET pol_clientSocket;
         if (xiloader::network::CreateConnection(&sock, "54231"))
         {
             /* Attempt to verify the users account info.. */
@@ -324,8 +326,7 @@ int __cdecl main(int argc, char* argv[])
             /* Create listen servers.. */
             g_IsRunning = true;
             std::thread thread_ffxiServer(xiloader::network::FFXiDataComm, &sock);
-            //std::thread thead_polServer(xiloader::network::PolServer);
-            HANDLE hPolServer = CreateThread(NULL, 0, xiloader::network::PolServer, NULL, 0, NULL);
+            std::thread thead_polServer(xiloader::network::PolServer, std::ref(pol_socket), std::ref(pol_clientSocket));
 
             /* Attempt to create polcore instance..*/
             IPOLCoreCom* polcore = NULL;
@@ -385,14 +386,15 @@ int __cdecl main(int argc, char* argv[])
                     polcore->Release();
             }
 
+            g_IsRunning = false;
+
+            /* Cleanup sockets.. */
+            xiloader::network::CleanupSocket(pol_socket, SD_RECEIVE);
+            xiloader::network::CleanupSocket(pol_clientSocket, SD_RECEIVE);
+            xiloader::network::CleanupSocket(sock.s, SD_SEND);
+
             /* Cleanup threads.. */
-            g_IsRunning = false;    
-            TerminateThread(hPolServer, 0);
-            WaitForSingleObject(hPolServer, 1000);
-            CloseHandle(hPolServer);
-
-            xiloader::network::CleanupSocket(&sock, SD_SEND);
-
+            thead_polServer.join();
             thread_ffxiServer.join();
 
             if (thread_hairpinfix.joinable())

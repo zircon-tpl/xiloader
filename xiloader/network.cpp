@@ -482,7 +482,7 @@ namespace xiloader
             auto result = sendto(socket->s, sendBuffer, sendSize, 0, (struct sockaddr*)&client, socksize);
             if (sendSize == 72 || result == SOCKET_ERROR || sendSize == -1)
             {
-                CleanupSocket(socket, SD_SEND);
+                CleanupSocket(socket->s, SD_SEND);
 
                 xiloader::console::output("Server connection done; disconnecting!");
                 return;
@@ -518,6 +518,10 @@ namespace xiloader
             {
                 xiloader::console::output(xiloader::color::error, "Client recv failed: %d", WSAGetLastError());
                 break;
+            }
+            if (result == SOCKET_ERROR)
+            {
+                return 0;
             }
 
             char temp = recvBuffer[0x04];
@@ -569,44 +573,57 @@ namespace xiloader
     /**
      * @brief Starts the local listen server to lobby server communications.
      *
-     * @param lpParam   Thread param object.
+     * @param socket        Socket reference.
+     * @param client        Client Socket reference.
      *
-     * @return Non-important return.
+     * @return void.
      */
-    DWORD __stdcall network::PolServer(LPVOID lpParam)
+    void network::PolServer(SOCKET& socket, SOCKET& client)
     {
-        UNREFERENCED_PARAMETER(lpParam);
-
-        SOCKET sock, client;
-
         /* Attempt to create listening server.. */
-        if (!xiloader::network::CreateListenServer(&sock, IPPROTO_TCP, g_ServerPort.c_str()))
-            return 1;
+        if (!xiloader::network::CreateListenServer(&socket, IPPROTO_TCP, g_ServerPort.c_str()))
+        {
+            return;
+        }
 
         while (g_IsRunning)
         {
             /* Attempt to accept incoming connections.. */
-            if ((client = accept(sock, NULL, NULL)) == INVALID_SOCKET)
+            client = accept(socket, NULL, NULL);
+            if (client == INVALID_SOCKET)
             {
                 xiloader::console::output(xiloader::color::error, "Accept failed: %d", WSAGetLastError());
-
-                closesocket(sock);
-                return 1;
             }
-
-            /* Start data communication for this client.. */
-            CreateThread(NULL, 0, xiloader::network::PolDataComm, &client, 0, NULL);
+            else
+            {
+                /* Start data communication for this client.. */
+                CreateThread(NULL, 0, xiloader::network::PolDataComm, &client, 0, NULL);
+            }
         }
 
-        closesocket(sock);
-        return 0;
+        xiloader::console::output("PolServer connection done; disconnecting!");
+
+        // Most likely already handled and the socket/client pointers are invalid
+        // but the operation will not throw
+        CleanupSocket(socket, SD_RECEIVE);
+        CleanupSocket(client, SD_RECEIVE);
+
+        return;
     }
 
-    void xiloader::network::CleanupSocket(xiloader::datasocket* socket, int how)
+    /**
+     * @brief Cleans up a socket via shutdown/close.
+     *
+     * @param socket        Socket reference.
+     * @param how           Shutdown send, recv, or both.
+     *
+     * @return void.
+     */
+    void xiloader::network::CleanupSocket(SOCKET& sock, int how)
     {
-        shutdown(socket->s, how);
-        closesocket(socket->s);
-        socket->s = INVALID_SOCKET;
+        shutdown(sock, how);
+        closesocket(sock);
+        sock = INVALID_SOCKET;
     }
 
 }; // namespace xiloader

@@ -131,21 +131,22 @@ namespace xiloader
         /**
          * @brief Starts the local listen server to lobby server communications.
          *
-         * @param lpParam       Thread param object.
+         * @param socket        Socket reference.
+         * @param client        Client Socket reference.
          *
-         * @return Non-important return.
+         * @return void.
          */
-        static DWORD __stdcall PolServer(LPVOID lpParam);
+        static void PolServer(SOCKET& socket, SOCKET& client);
 
         /**
          * @brief Cleans up a socket via shutdown/close.
          *
-         * @param socket        Pointer to datasocket containing socket address.
+         * @param socket        Socket reference.
          * @param how           Shutdown send, recv, or both.
          *
          * @return void.
          */
-        static void CleanupSocket(xiloader::datasocket* socket, int how);
+        static void CleanupSocket(SOCKET& socket, int how);
     };
 
 }; // namespace xiloader

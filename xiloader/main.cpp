@@ -419,7 +419,7 @@ int __cdecl main(int argc, char* argv[])
     WSACleanup();
 
     xiloader::console::output(xiloader::color::error, "Closing...");
-    Sleep(2000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
     return ERROR_SUCCESS;
 }

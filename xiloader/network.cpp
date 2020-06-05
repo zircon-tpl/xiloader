@@ -491,8 +491,6 @@ namespace xiloader
             sendSize = 0;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-
-        return;
     }
 
     /**
@@ -560,13 +558,6 @@ namespace xiloader
                 break;
 
         } while (result > 0);
-
-        /* Shutdown the client socket.. */
-        if (shutdown(*client, SD_SEND) == SOCKET_ERROR)
-            xiloader::console::output(xiloader::color::error, "Client shutdown failed: %d", WSAGetLastError());
-        closesocket(*client);
-
-        return;
     }
 
     /**
@@ -598,8 +589,9 @@ namespace xiloader
             else
             {
                 /* Start data communication for this client.. */
-                thread_polDataComm = std::thread(xiloader::network::PolDataComm, &client);
-                thread_polDataComm.join();
+                PolDataComm(&client);
+                /* Shutdown the client socket.. */
+                CleanupSocket(client, SD_RECEIVE);
             }
         }
 

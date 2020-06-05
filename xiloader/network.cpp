@@ -498,13 +498,12 @@ namespace xiloader
     /**
      * @brief Data communication between the local client and the lobby server.
      *
-     * @param lpParam   Thread param object.
+     * @param client        Pointer to Socket.
      *
-     * @return Non-important return.
+     * @return void.
      */
-    DWORD __stdcall network::PolDataComm(LPVOID lpParam)
+    void network::PolDataComm(SOCKET* client)
     {
-        SOCKET client = *(SOCKET*)lpParam;
         unsigned char recvBuffer[1024] = { 0 };
         int result = 0, x = 0;
         time_t t = 0;
@@ -513,7 +512,7 @@ namespace xiloader
         do
         {
             /* Attempt to receive incoming data.. */
-            result = recv(client, (char*)recvBuffer, sizeof(recvBuffer), 0);
+            result = recv(*client, (char*)recvBuffer, sizeof(recvBuffer), 0);
             if (result <= 0)
             {
                 xiloader::console::output(xiloader::color::error, "Client recv failed: %d", WSAGetLastError());
@@ -521,7 +520,7 @@ namespace xiloader
             }
             if (result == SOCKET_ERROR)
             {
-                return 0;
+                return;
             }
 
             char temp = recvBuffer[0x04];
@@ -549,7 +548,7 @@ namespace xiloader
             }
 
             /* Echo back the buffer to the server.. */
-            if (send(client, (char*)recvBuffer, result, 0) == SOCKET_ERROR)
+            if (send(*client, (char*)recvBuffer, result, 0) == SOCKET_ERROR)
             {
                 xiloader::console::output(xiloader::color::error, "Client send failed: %d", WSAGetLastError());
                 break;
@@ -563,11 +562,11 @@ namespace xiloader
         } while (result > 0);
 
         /* Shutdown the client socket.. */
-        if (shutdown(client, SD_SEND) == SOCKET_ERROR)
+        if (shutdown(*client, SD_SEND) == SOCKET_ERROR)
             xiloader::console::output(xiloader::color::error, "Client shutdown failed: %d", WSAGetLastError());
-        closesocket(client);
+        closesocket(*client);
 
-        return 0;
+        return;
     }
 
     /**
@@ -586,6 +585,8 @@ namespace xiloader
             return;
         }
 
+        std::thread thread_polDataComm;
+
         while (g_IsRunning)
         {
             /* Attempt to accept incoming connections.. */
@@ -597,7 +598,8 @@ namespace xiloader
             else
             {
                 /* Start data communication for this client.. */
-                CreateThread(NULL, 0, xiloader::network::PolDataComm, &client, 0, NULL);
+                thread_polDataComm = std::thread(xiloader::network::PolDataComm, &client);
+                thread_polDataComm.join();
             }
         }
 

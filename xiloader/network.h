@@ -71,11 +71,11 @@ namespace xiloader
         /**
          * @brief Data communication between the local client and the lobby server.
          *
-         * @param lpParam       Thread param object.
+         * @param client        Pointer to Socket.
          *
-         * @return Non-important return.
+         * @return void.
          */
-        static DWORD __stdcall PolDataComm(LPVOID lpParam);
+        static void PolDataComm(SOCKET* client);
         
     public:
 

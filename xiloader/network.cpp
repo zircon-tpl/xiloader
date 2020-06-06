@@ -23,25 +23,18 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #include <thread>
 
-/* Externals */
-extern std::string g_ServerAddress;
-extern std::string g_Username;
-extern std::string g_Password;
-extern std::string g_ServerPort;
-extern char* g_CharacterList;
-extern bool g_IsRunning;
-
 namespace xiloader
 {
     /**
      * @brief Creates a connection on the given port.
      *
-     * @param sock      The datasocket object to store information within.
-     * @param port      The port to create the connection on.
+     * @param sock          The datasocket object to store information within.
+     * @param server        Server address to connect.
+     * @param port          The port to create the connection on.
      *
      * @return True on success, false otherwise.
      */
-    bool network::CreateConnection(datasocket* sock, const char* port)
+    bool network::CreateConnection(datasocket* sock, const std::string& server, const char* port)
     {
         struct addrinfo hints;
         memset(&hints, 0x00, sizeof(hints));
@@ -52,7 +45,7 @@ namespace xiloader
 
         /* Attempt to get the server information. */
         struct addrinfo* addr = NULL;
-        if (getaddrinfo(g_ServerAddress.c_str(), port, &hints, &addr))
+        if (getaddrinfo(server.c_str(), port, &hints, &addr))
         {
             xiloader::console::output(xiloader::color::error, "Failed to obtain remote server information.");
             return 0;
@@ -99,7 +92,7 @@ namespace xiloader
         }
 
         inet_pton(AF_INET, localAddress, &sock->LocalAddress);
-        inet_pton(AF_INET, g_ServerAddress.c_str(), &sock->ServerAddress);
+        inet_pton(AF_INET, server.c_str(), &sock->ServerAddress);
 
         return 1;
     }
@@ -199,11 +192,14 @@ namespace xiloader
     /**
      * @brief Verifies the players login information; also handles creating new accounts.
      *
-     * @param sock      The datasocket object with the connection socket.
+     * @param sock          The datasocket object with the connection socket.
+     * @param server        Server address to connect.
+     * @param username      Account username.
+     * @param password      Account password.
      *
      * @return True on success, false otherwise.
      */
-    bool network::VerifyAccount(datasocket* sock)
+    bool network::VerifyAccount(datasocket* sock, const std::string& server, std::string& username, std::string& password)
     {
         static bool bCanAutoLogin = true;
 
@@ -213,12 +209,12 @@ namespace xiloader
         /* Create connection if required.. */
         if (sock->s == NULL || sock->s == INVALID_SOCKET)
         {
-            if (!xiloader::network::CreateConnection(sock, "54231"))
+            if (!xiloader::network::CreateConnection(sock, server, "54231"))
                 return false;
         }
 
         /* Determine if we should auto-login.. */
-        bool bUseAutoLogin = !g_Username.empty() && !g_Password.empty() && bCanAutoLogin;
+        bool bUseAutoLogin = !username.empty() && !password.empty() && bCanAutoLogin;
         if (bUseAutoLogin)
             xiloader::console::output(xiloader::color::lightgreen, "Autologin activated!");
 
@@ -244,9 +240,9 @@ namespace xiloader
                     xiloader::console::output("Before resetting your password, first verify your account details.");
                 xiloader::console::output("Please enter your login information.");
                 std::cout << "\nUsername: ";
-                std::cin >> g_Username;
+                std::cin >> username;
                 std::cout << "Password: ";
-                g_Password.clear();
+                password.clear();
 
                 /* Read in each char and instead of displaying it. display a "*" */
                 char ch;
@@ -256,15 +252,15 @@ namespace xiloader
                         continue;
                     else if (ch == '\b')
                     {
-                        if (g_Password.size())
+                        if (password.size())
                         {
-                            g_Password.pop_back();
+                            password.pop_back();
                             std::cout << "\b \b";
                         }
                     }
                     else
                     {
-                        g_Password.push_back(ch);
+                        password.push_back(ch);
                         std::cout << '*';
                     }
                 }
@@ -279,15 +275,15 @@ namespace xiloader
             create_account:
                 xiloader::console::output("Please enter your desired login information.");
                 std::cout << "\nUsername (3-15 characters): ";
-                std::cin >> g_Username;
+                std::cin >> username;
                 std::cout << "Password (6-15 characters): ";
-                g_Password.clear();
-                std::cin >> g_Password;
+                password.clear();
+                std::cin >> password;
                 std::cout << "Repeat Password           : ";
                 std::cin >> input;
                 std::cout << std::endl;
 
-                if (input != g_Password)
+                if (input != password)
                 {
                     xiloader::console::output(xiloader::color::error, "Passwords did not match! Please try again.");
                     goto create_account;
@@ -306,8 +302,8 @@ namespace xiloader
         }
 
         /* Copy username and password into buffer.. */
-        memcpy(sendBuffer + 0x00, g_Username.c_str(), 16);
-        memcpy(sendBuffer + 0x10, g_Password.c_str(), 16);
+        memcpy(sendBuffer + 0x00, username.c_str(), 16);
+        memcpy(sendBuffer + 0x10, password.c_str(), 16);
 
         /* Send info to server and obtain response.. */
         send(sock->s, sendBuffer, 33, 0);
@@ -317,7 +313,7 @@ namespace xiloader
         switch (static_cast<AccountResult>(recvBuffer[0]))
         {
         case AccountResult::Login_Success: // 0x001
-            xiloader::console::output(xiloader::color::success, "Successfully logged in as %s!", g_Username.c_str());
+            xiloader::console::output(xiloader::color::success, "Successfully logged in as %s!", username.c_str());
             sock->AccountId = *(UINT32*)(recvBuffer + 0x01);
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
@@ -355,29 +351,29 @@ namespace xiloader
             return false;
 
         case AccountResult::PassChange_Request: // Request for updated password to change to.
-            xiloader::console::output(xiloader::color::success, "Log in verified for user %s.", g_Username.c_str());
+            xiloader::console::output(xiloader::color::success, "Log in verified for user %s.", username.c_str());
             std::string confirmed_password = "";
             do
             {
                 std::cout << "Enter new password (6-15 characters): ";
-                g_Password.clear();
-                std::cin >> g_Password;
+                password.clear();
+                std::cin >> password;
                 std::cout << "Repeat Password           : ";
                 std::cin >> confirmed_password;
                 std::cout << std::endl;
 
-                if (g_Password != confirmed_password)
+                if (password != confirmed_password)
                 {
                     xiloader::console::output(xiloader::color::error, "Passwords did not match! Please try again.");
                 }
-            } while (g_Password != confirmed_password);
+            } while (password != confirmed_password);
 
             /* Clear the buffers */
             memset(sendBuffer, 0, 33);
             memset(recvBuffer, 0, 16);
 
             /* Copy the new password into the buffer. */
-            memcpy(sendBuffer, g_Password.c_str(), 16);
+            memcpy(sendBuffer, password.c_str(), 16);
 
             /* Send info to server and obtain response.. */
             send(sock->s, sendBuffer, 16, 0);
@@ -389,7 +385,7 @@ namespace xiloader
             case AccountResult::PassChange_Success: // Success (Changed Password)
                 xiloader::console::output(xiloader::color::success, "Password updated successfully!");
                 std::cout << std::endl;
-                g_Password.clear();
+                password.clear();
                 closesocket(sock->s);
                 sock->s = INVALID_SOCKET;
                 return false;
@@ -397,7 +393,7 @@ namespace xiloader
             case AccountResult::PassChange_Error: // Error (Changed Password)
                 xiloader::console::output(xiloader::color::error, "Failed to change password.");
                 std::cout << std::endl;
-                g_Password.clear();
+                password.clear();
                 closesocket(sock->s);
                 sock->s = INVALID_SOCKET;
                 return false;
@@ -413,14 +409,17 @@ namespace xiloader
     /**
      * @brief Data communication between the local client and the game server.
      *
-     * @param lpParam   Thread param object.
+     * @param socket        Pointer to communication socket.
+     * @param server        Server address to connect.
+     * @param characterList Pointer to character list in memory.
+     * @param sharedState   Shared thread state (bool, mutex, condition_variable).
      *
-     * @return Non-important return.
+     * @return void.
      */
-    void network::FFXiDataComm(xiloader::datasocket* socket)
+    void network::FFXiDataComm(xiloader::datasocket* socket, const std::string& server, char*& characterList, xiloader::SharedState& sharedState)
     {
         /* Attempt to create connection to the server.. */
-        if (!xiloader::network::CreateConnection(socket, "54230"))
+        if (!xiloader::network::CreateConnection(socket, server, "54230"))
         {
             xiloader::console::output("Failed connection to Server");
             return;
@@ -430,7 +429,7 @@ namespace xiloader
         char recvBuffer[4096] = { 0 };
         char sendBuffer[4096] = { 0 };
 
-        while (g_IsRunning)
+        while (sharedState.isRunning)
         {
             /* Attempt to receive the incoming data.. */
             struct sockaddr_in client;
@@ -461,15 +460,15 @@ namespace xiloader
                 xiloader::console::output(xiloader::color::warning, "Receiving character list..");
                 for (auto x = 0; x <= recvBuffer[1]; x++)
                 {
-                    g_CharacterList[0x00 + (x * 0x68)] = 1;
-                    g_CharacterList[0x02 + (x * 0x68)] = 1;
-                    g_CharacterList[0x10 + (x * 0x68)] = (char)x;
-                    g_CharacterList[0x11 + (x * 0x68)] = 0x80u;
-                    g_CharacterList[0x18 + (x * 0x68)] = 0x20;
-                    g_CharacterList[0x28 + (x * 0x68)] = 0x20;
+                    characterList[0x00 + (x * 0x68)] = 1;
+                    characterList[0x02 + (x * 0x68)] = 1;
+                    characterList[0x10 + (x * 0x68)] = (char)x;
+                    characterList[0x11 + (x * 0x68)] = 0x80u;
+                    characterList[0x18 + (x * 0x68)] = 0x20;
+                    characterList[0x28 + (x * 0x68)] = 0x20;
 
-                    memcpy(g_CharacterList + 0x04 + (x * 0x68), recvBuffer + 0x14 * (x + 1), 4); // Character Id
-                    memcpy(g_CharacterList + 0x08 + (x * 0x68), recvBuffer + 0x10 * (x + 1), 4); // Content Id
+                    memcpy(characterList + 0x04 + (x * 0x68), recvBuffer + 0x14 * (x + 1), 4); // Character Id
+                    memcpy(characterList + 0x08 + (x * 0x68), recvBuffer + 0x10 * (x + 1), 4); // Content Id
                 }
                 sendSize = 0;
                 break;
@@ -563,22 +562,24 @@ namespace xiloader
     /**
      * @brief Starts the local listen server to lobby server communications.
      *
-     * @param socket        Socket reference.
-     * @param client        Client Socket reference.
+     * @param socket        Socket reference to accept communications.
+     * @param client        Client Socket reference to listen on.
+     * @param server        Lobby server port.
+     * @param sharedState   Shared thread state (bool, mutex, condition_variable).
      *
      * @return void.
      */
-    void network::PolServer(SOCKET& socket, SOCKET& client)
+    void network::PolServer(SOCKET& socket, SOCKET& client, const std::string& lobbyServerPort, xiloader::SharedState& sharedState)
     {
         /* Attempt to create listening server.. */
-        if (!xiloader::network::CreateListenServer(&socket, IPPROTO_TCP, g_ServerPort.c_str()))
+        if (!xiloader::network::CreateListenServer(&socket, IPPROTO_TCP, lobbyServerPort.c_str()))
         {
             return;
         }
 
         std::thread thread_polDataComm;
 
-        while (g_IsRunning)
+        while (sharedState.isRunning)
         {
             /* Attempt to accept incoming connections.. */
             client = accept(socket, NULL, NULL);

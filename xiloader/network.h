@@ -31,6 +31,8 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include <Windows.h>
 #include <string>
 #include <conio.h>
+#include <mutex>
+#include <condition_variable>
 
 #include "console.h"
 
@@ -64,6 +66,15 @@ namespace xiloader
     } datasocket;
 
     /**
+     * @brief State shared between operating threads (FFXI, POL, etc).
+     */
+    typedef struct SharedState {
+        bool isRunning;
+        std::mutex mutex;
+        std::condition_variable conditionVariable;
+    } SharedState;
+
+    /**
      * @brief Network class containing functions related to networking.
      */
     class network
@@ -83,20 +94,24 @@ namespace xiloader
          * @brief Data communication between the local client and the game server.
          *
          * @param socket        Pointer to communication socket.
+         * @param server        Server address to connect.
+         * @param characterList Pointer to character list in memory.
+         * @param sharedState   Shared thread state (bool, mutex, condition_variable).
          *
          * @return void.
          */
-        static void FFXiDataComm(xiloader::datasocket* socket);
+        static void FFXiDataComm(xiloader::datasocket* socket, const std::string& server, char*& characterList, xiloader::SharedState& sharedState);
 
         /**
          * @brief Creates a connection on the given port.
          *
          * @param sock          The datasocket object to store information within.
+         * @param server        Server address to connect.
          * @param port          The port to create the connection on.
          *
          * @return True on success, false otherwise.
          */
-        static bool CreateConnection(datasocket* sock, const char* port);
+        static bool CreateConnection(datasocket* sock, const std::string& server, const char* port);
 
         /**
          * @brief Creates a listening server on the given port and protocol.
@@ -123,20 +138,25 @@ namespace xiloader
          * @brief Verifies the players login information; also handles creating new accounts.
          *
          * @param sock          The datasocket object with the connection socket.
+         * @param server        Server address to connect.
+         * @param username      Account username.
+         * @param password      Account password.
          *
          * @return True on success, false otherwise.
          */
-        static bool VerifyAccount(datasocket* sock);
+        static bool VerifyAccount(datasocket* sock, const std::string& server, std::string& username, std::string& password);
 
         /**
          * @brief Starts the local listen server to lobby server communications.
          *
-         * @param socket        Socket reference.
-         * @param client        Client Socket reference.
+         * @param socket        Socket reference to accept communications.
+         * @param client        Client Socket reference to listen on.
+         * @param server        Lobby server port.
+         * @param sharedState   Shared thread state (bool, mutex, condition_variable).
          *
          * @return void.
          */
-        static void PolServer(SOCKET& socket, SOCKET& client);
+        static void PolServer(SOCKET& socket, SOCKET& client, const std::string& lobbyServerPort, xiloader::SharedState& sharedState);
 
         /**
          * @brief Cleans up a socket via shutdown/close.

@@ -62,13 +62,18 @@ __declspec(naked) void HairpinFixCave(void)
  *
  * @return void
  */
-void ApplyHairpinFix()
+void ApplyHairpinFix(xiloader::SharedState& sharedState)
 {
     do
     {
         /* Sleep until we find FFXiMain loaded.. */
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    } while (GetModuleHandleA("FFXiMain.dll") == NULL);
+    } while (GetModuleHandleA("FFXiMain.dll") == NULL && sharedState.isRunning);
+
+    if (!sharedState.isRunning)
+    {
+        return;
+    }
 
     /* Convert server address.. */
     xiloader::network::ResolveHostname(g_ServerAddress.c_str(), &g_NewServerAddress);
@@ -83,6 +88,7 @@ void ApplyHairpinFix()
     if (hairpinAddress == 0)
     {
         xiloader::console::output(xiloader::color::error, "Failed to locate main hairpin hack address!");
+        xiloader::NotifyShutdown(sharedState);
         return;
     }
 
@@ -99,6 +105,7 @@ void ApplyHairpinFix()
     if (zoneChangeAddress == 0)
     {
         xiloader::console::output(xiloader::color::error, "Failed to locate zone change hairpin address!");
+        xiloader::NotifyShutdown(sharedState);
         return;
     }
 
@@ -189,95 +196,96 @@ inline LPVOID FindCharacters(void** commFuncs)
  */
 void LaunchFFXI(bool useHairpinFix, const xiloader::Language& language, char*& characterList, xiloader::SharedState& sharedState)
 {
+    bool errorState = false;
+
     /* Initialize COM */
     auto hResult = CoInitialize(NULL);
     if (hResult != S_OK && hResult != S_FALSE)
     {
-        /* Cleanup Winsock */
-        WSACleanup();
-
         xiloader::console::output(xiloader::color::error, "Failed to initialize COM, error code: %d", hResult);
-        return;
+        errorState = true;
     }
 
-    /* Attach detour for gethostbyname.. */
-    DetourTransactionBegin();
-    DetourUpdateThread(GetCurrentThread());
-    DetourAttach(&(PVOID&)Real_gethostbyname, Mine_gethostbyname);
-    if (DetourTransactionCommit() != NO_ERROR)
+    if (!errorState)
     {
-        /* Cleanup COM and Winsock */
-        CoUninitialize();
-        WSACleanup();
-
-        xiloader::console::output(xiloader::color::error, "Failed to detour function 'gethostbyname'. Cannot continue!");
-        return;
+        /* Attach detour for gethostbyname.. */
+        DetourTransactionBegin();
+        DetourUpdateThread(GetCurrentThread());
+        DetourAttach(&(PVOID&)Real_gethostbyname, Mine_gethostbyname);
+        if (DetourTransactionCommit() != NO_ERROR)
+        {
+            xiloader::console::output(xiloader::color::error, "Failed to detour function 'gethostbyname'. Cannot continue!");
+            errorState = true;
+        }
     }
 
     /* Start hairpin hack thread if required.. */
     std::thread thread_hairpinfix;
-    if (useHairpinFix)
+    if (!errorState && useHairpinFix)
     {
-        thread_hairpinfix = std::thread(ApplyHairpinFix);
+        thread_hairpinfix = std::thread(ApplyHairpinFix, std::ref(sharedState));
     }
 
-    /* Attempt to create polcore instance..*/
-    IPOLCoreCom* polcore = NULL;
-    if (CoCreateInstance(xiloader::CLSID_POLCoreCom[language], NULL, 0x17, xiloader::IID_IPOLCoreCom[language], (LPVOID*)&polcore) != S_OK)
+    if (!errorState)
     {
-        xiloader::console::output(xiloader::color::error, "Failed to initialize instance of polcore!");
-    }
-    else
-    {
-        /* Invoke the setup functions for polcore.. */
-        polcore->SetAreaCode(language);
-        polcore->SetParamInit(GetModuleHandle(NULL), " /game eAZcFcB -net 3");
-
-        /* Obtain the common function table.. */
-        void* (**lpCommandTable)(...);
-        polcore->GetCommonFunctionTable((unsigned long**)&lpCommandTable);
-
-        /* Invoke the inet mutex function.. */
-        auto findMutex = (void* (*)(...))FindINETMutex(language);
-        findMutex();
-
-        /* Locate and prepare the pol connection.. */
-        auto polConnection = (char*)FindPolConn(language);
-        memset(polConnection, 0x00, 0x68);
-        auto enc = (char*)malloc(0x1000);
-        memset(enc, 0x00, 0x1000);
-        memcpy(polConnection + 0x48, &enc, sizeof(char**));
-
-        /* Locate the character storage buffer.. */
-        characterList = (char*)FindCharacters((void**)lpCommandTable);
-
-        /* Invoke the setup functions for polcore.. */
-        lpCommandTable[POLFUNC_REGISTRY_LANG](language);
-        lpCommandTable[POLFUNC_FFXI_LANG](xiloader::functions::GetRegistryPlayOnlineLanguage(language));
-        lpCommandTable[POLFUNC_REGISTRY_KEY](xiloader::functions::GetRegistryPlayOnlineKey(language));
-        lpCommandTable[POLFUNC_INSTALL_FOLDER](xiloader::functions::GetRegistryPlayOnlineInstallFolder(language));
-        lpCommandTable[POLFUNC_INET_MUTEX]();
-
-        /* Attempt to create FFXi instance..*/
-        IFFXiEntry* ffxi = NULL;
-        if (CoCreateInstance(xiloader::CLSID_FFXiEntry, NULL, 0x17, xiloader::IID_IFFXiEntry, (LPVOID*)&ffxi) != S_OK)
+        /* Attempt to create polcore instance..*/
+        IPOLCoreCom* polcore = NULL;
+        if (CoCreateInstance(xiloader::CLSID_POLCoreCom[language], NULL, 0x17, xiloader::IID_IPOLCoreCom[language], (LPVOID*)&polcore) != S_OK)
         {
-            xiloader::console::output(xiloader::color::error, "Failed to initialize instance of FFxi!");
+            xiloader::console::output(xiloader::color::error, "Failed to initialize instance of polcore!");
         }
         else
         {
-            /* Attempt to start Final Fantasy.. */
-            IUnknown* message = NULL;
-            xiloader::console::hide();
-            ffxi->GameStart(polcore, &message);
-            xiloader::console::show();
-            ffxi->Release();
-        }
+            /* Invoke the setup functions for polcore.. */
+            polcore->SetAreaCode(language);
+            polcore->SetParamInit(GetModuleHandle(NULL), " /game eAZcFcB -net 3");
 
-        /* Cleanup polcore object.. */
-        if (polcore != NULL)
-        {
-            polcore->Release();
+            /* Obtain the common function table.. */
+            void* (**lpCommandTable)(...);
+            polcore->GetCommonFunctionTable((unsigned long**)&lpCommandTable);
+
+            /* Invoke the inet mutex function.. */
+            auto findMutex = (void* (*)(...))FindINETMutex(language);
+            findMutex();
+
+            /* Locate and prepare the pol connection.. */
+            auto polConnection = (char*)FindPolConn(language);
+            memset(polConnection, 0x00, 0x68);
+            auto enc = (char*)malloc(0x1000);
+            memset(enc, 0x00, 0x1000);
+            memcpy(polConnection + 0x48, &enc, sizeof(char**));
+
+            /* Locate the character storage buffer.. */
+            characterList = (char*)FindCharacters((void**)lpCommandTable);
+
+            /* Invoke the setup functions for polcore.. */
+            lpCommandTable[POLFUNC_REGISTRY_LANG](language);
+            lpCommandTable[POLFUNC_FFXI_LANG](xiloader::functions::GetRegistryPlayOnlineLanguage(language));
+            lpCommandTable[POLFUNC_REGISTRY_KEY](xiloader::functions::GetRegistryPlayOnlineKey(language));
+            lpCommandTable[POLFUNC_INSTALL_FOLDER](xiloader::functions::GetRegistryPlayOnlineInstallFolder(language));
+            lpCommandTable[POLFUNC_INET_MUTEX]();
+
+            /* Attempt to create FFXi instance..*/
+            IFFXiEntry* ffxi = NULL;
+            if (CoCreateInstance(xiloader::CLSID_FFXiEntry, NULL, 0x17, xiloader::IID_IFFXiEntry, (LPVOID*)&ffxi) != S_OK)
+            {
+                xiloader::console::output(xiloader::color::error, "Failed to initialize instance of FFxi!");
+            }
+            else
+            {
+                /* Attempt to start Final Fantasy.. */
+                IUnknown* message = NULL;
+                xiloader::console::hide();
+                ffxi->GameStart(polcore, &message);
+                xiloader::console::show();
+                ffxi->Release();
+            }
+
+            /* Cleanup polcore object.. */
+            if (polcore != NULL)
+            {
+                polcore->Release();
+            }
         }
     }
 
@@ -286,9 +294,7 @@ void LaunchFFXI(bool useHairpinFix, const xiloader::Language& language, char*& c
         thread_hairpinfix.join();
     }
 
-    std::lock_guard<std::mutex> lock(sharedState.mutex);
-    sharedState.isRunning = false;
-    sharedState.conditionVariable.notify_one();
+    xiloader::NotifyShutdown(sharedState);
 
     /* Detach detour for gethostbyname. */
     DetourTransactionBegin();

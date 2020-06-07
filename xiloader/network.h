@@ -35,6 +35,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include <condition_variable>
 
 #include "console.h"
+#include "FFXi.h"
 
 namespace xiloader
 {
@@ -69,10 +70,24 @@ namespace xiloader
      * @brief State shared between operating threads (FFXI, POL, etc).
      */
     typedef struct SharedState {
-        bool isRunning;
+        bool isRunning{ false };
         std::mutex mutex;
         std::condition_variable conditionVariable;
     } SharedState;
+
+    /**
+     * @brief Lock/Signal a system shutdown by modifying running state.
+     *
+     * @param sharedState   Shared thread state (bool, mutex, condition_variable).
+     *
+     * @return void.
+     */
+    static void NotifyShutdown(xiloader::SharedState& sharedState)
+    {
+        std::lock_guard<std::mutex> lock(sharedState.mutex);
+        sharedState.isRunning = false;
+        sharedState.conditionVariable.notify_all();
+    }
 
     /**
      * @brief Network class containing functions related to networking.

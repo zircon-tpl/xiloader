@@ -422,6 +422,7 @@ namespace xiloader
         if (!xiloader::network::CreateConnection(socket, server, "54230"))
         {
             xiloader::console::output("Failed connection to Server");
+            xiloader::NotifyShutdown(sharedState);
             return;
         }
 
@@ -436,6 +437,7 @@ namespace xiloader
             unsigned int socksize = sizeof(client);
             if (recvfrom(socket->s, recvBuffer, sizeof(recvBuffer), 0, (struct sockaddr*)&client, (int*)&socksize) == SOCKET_ERROR)
             {
+                xiloader::NotifyShutdown(sharedState);
                 return;
             }
 
@@ -481,9 +483,8 @@ namespace xiloader
             auto result = sendto(socket->s, sendBuffer, sendSize, 0, (struct sockaddr*)&client, socksize);
             if (sendSize == 72 || result == SOCKET_ERROR || sendSize == -1)
             {
-                CleanupSocket(socket->s, SD_SEND);
-
                 xiloader::console::output("Server connection done; disconnecting!");
+                xiloader::NotifyShutdown(sharedState);
                 return;
             }
 
@@ -499,7 +500,7 @@ namespace xiloader
      *
      * @return void.
      */
-    void network::PolDataComm(SOCKET* client)
+    void network::PolDataComm(SOCKET* client, xiloader::SharedState& sharedState)
     {
         unsigned char recvBuffer[1024] = { 0 };
         int result = 0, x = 0;
@@ -510,14 +511,10 @@ namespace xiloader
         {
             /* Attempt to receive incoming data.. */
             result = recv(*client, (char*)recvBuffer, sizeof(recvBuffer), 0);
-            if (result <= 0)
+            if (result <= 0 && sharedState.isRunning)
             {
                 xiloader::console::output(xiloader::color::error, "Client recv failed: %d", WSAGetLastError());
                 break;
-            }
-            if (result == SOCKET_ERROR)
-            {
-                return;
             }
 
             char temp = recvBuffer[0x04];
@@ -574,6 +571,7 @@ namespace xiloader
         /* Attempt to create listening server.. */
         if (!xiloader::network::CreateListenServer(&socket, IPPROTO_TCP, lobbyServerPort.c_str()))
         {
+            xiloader::NotifyShutdown(sharedState);
             return;
         }
 
@@ -590,7 +588,7 @@ namespace xiloader
             else
             {
                 /* Start data communication for this client.. */
-                PolDataComm(&client);
+                PolDataComm(&client, sharedState);
                 /* Shutdown the client socket.. */
                 CleanupSocket(client, SD_RECEIVE);
             }

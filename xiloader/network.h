@@ -84,9 +84,12 @@ namespace xiloader
      */
     static void NotifyShutdown(xiloader::SharedState& sharedState)
     {
-        std::lock_guard<std::mutex> lock(sharedState.mutex);
-        sharedState.isRunning = false;
-        sharedState.conditionVariable.notify_all();
+        if (sharedState.isRunning)
+        { 
+            std::lock_guard<std::mutex> lock(sharedState.mutex);
+            sharedState.isRunning = false;
+            sharedState.conditionVariable.notify_all();
+        }
     }
 
     /**
@@ -101,7 +104,7 @@ namespace xiloader
          *
          * @return void.
          */
-        static void PolDataComm(SOCKET* client);
+        static void PolDataComm(SOCKET* client, xiloader::SharedState& sharedState);
         
     public:
 

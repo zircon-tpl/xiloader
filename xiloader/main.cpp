@@ -440,12 +440,12 @@ int __cdecl main(int argc, char* argv[])
             xiloader::network::CleanupSocket(sock.s, SD_SEND);
 
             /* Cleanup threads.. */
+            thead_polServer.join();
+            thread_ffxiServer.join();
             if (thread_ffxi.joinable())
             {
                 thread_ffxi.join();
             }
-            thead_polServer.join();
-            thread_ffxiServer.join();
         }
     }
     else

@@ -137,7 +137,7 @@ namespace xiloader
         /* Bind to the local address.. */
         if (bind(*sock, addr->ai_addr, (int)addr->ai_addrlen) == SOCKET_ERROR)
         {
-            xiloader::console::output(xiloader::color::error, "Failed to bind to listening socket.");
+            xiloader::console::output(xiloader::color::error, "Failed to bind to listening socket. %d", WSAGetLastError());
 
             freeaddrinfo(addr);
             closesocket(*sock);
@@ -437,6 +437,7 @@ namespace xiloader
             unsigned int socksize = sizeof(client);
             if (recvfrom(socket->s, recvBuffer, sizeof(recvBuffer), 0, (struct sockaddr*)&client, (int*)&socksize) == SOCKET_ERROR)
             {
+                xiloader::console::output(xiloader::color::error, "Failed recvfrom: %d", WSAGetLastError());
                 xiloader::NotifyShutdown(sharedState);
                 return;
             }
@@ -483,6 +484,7 @@ namespace xiloader
             auto result = sendto(socket->s, sendBuffer, sendSize, 0, (struct sockaddr*)&client, socksize);
             if (sendSize == 72 || result == SOCKET_ERROR || sendSize == -1)
             {
+                xiloader::console::output(xiloader::color::error, "Failed sendto: %d", WSAGetLastError());
                 xiloader::console::output("Server connection done; disconnecting!");
                 xiloader::NotifyShutdown(sharedState);
                 return;
@@ -571,6 +573,7 @@ namespace xiloader
         /* Attempt to create listening server.. */
         if (!xiloader::network::CreateListenServer(&socket, IPPROTO_TCP, lobbyServerPort.c_str()))
         {
+            xiloader::console::output(xiloader::color::error, "Listen failed: %d", WSAGetLastError());
             xiloader::NotifyShutdown(sharedState);
             return;
         }

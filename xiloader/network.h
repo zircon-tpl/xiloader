@@ -31,8 +31,11 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include <Windows.h>
 #include <string>
 #include <conio.h>
+#include <mutex>
+#include <condition_variable>
 
 #include "console.h"
+#include "FFXi.h"
 
 namespace xiloader
 {
@@ -64,39 +67,69 @@ namespace xiloader
     } datasocket;
 
     /**
+     * @brief State shared between operating threads (FFXI, POL, etc).
+     */
+    typedef struct SharedState {
+        bool isRunning{ false };
+        std::mutex mutex;
+        std::condition_variable conditionVariable;
+    } SharedState;
+
+    /**
+     * @brief Lock/Signal a system shutdown by modifying running state.
+     *
+     * @param sharedState   Shared thread state (bool, mutex, condition_variable).
+     *
+     * @return void.
+     */
+    static void NotifyShutdown(xiloader::SharedState& sharedState)
+    {
+        if (sharedState.isRunning)
+        { 
+            std::lock_guard<std::mutex> lock(sharedState.mutex);
+            sharedState.isRunning = false;
+            sharedState.conditionVariable.notify_all();
+        }
+    }
+
+    /**
      * @brief Network class containing functions related to networking.
      */
     class network
     {
         /**
-         * @brief Data communication between the local client and the game server.
-         *
-         * @param lpParam       Thread param object.
-         *
-         * @return Non-important return.
-         */
-        static DWORD __stdcall FFXiDataComm(LPVOID lpParam);
-
-        /**
          * @brief Data communication between the local client and the lobby server.
          *
-         * @param lpParam       Thread param object.
+         * @param client        Pointer to Socket.
          *
-         * @return Non-important return.
+         * @return void.
          */
-        static DWORD __stdcall PolDataComm(LPVOID lpParam);
+        static void PolDataComm(SOCKET* client, xiloader::SharedState& sharedState);
         
     public:
+
+        /**
+         * @brief Data communication between the local client and the game server.
+         *
+         * @param socket        Pointer to communication socket.
+         * @param server        Server address to connect.
+         * @param characterList Pointer to character list in memory.
+         * @param sharedState   Shared thread state (bool, mutex, condition_variable).
+         *
+         * @return void.
+         */
+        static void FFXiDataComm(xiloader::datasocket* socket, const std::string& server, char*& characterList, xiloader::SharedState& sharedState);
 
         /**
          * @brief Creates a connection on the given port.
          *
          * @param sock          The datasocket object to store information within.
+         * @param server        Server address to connect.
          * @param port          The port to create the connection on.
          *
          * @return True on success, false otherwise.
          */
-        static bool CreateConnection(datasocket* sock, const char* port);
+        static bool CreateConnection(datasocket* sock, const std::string& server, const char* port);
 
         /**
          * @brief Creates a listening server on the given port and protocol.
@@ -123,28 +156,35 @@ namespace xiloader
          * @brief Verifies the players login information; also handles creating new accounts.
          *
          * @param sock          The datasocket object with the connection socket.
+         * @param server        Server address to connect.
+         * @param username      Account username.
+         * @param password      Account password.
          *
          * @return True on success, false otherwise.
          */
-        static bool VerifyAccount(datasocket* sock);
-        
-        /**
-         * @brief Starts the data communication between the client and server.
-         *
-         * @param lpParam       Thread param object.
-         *
-         * @return Non-important return.
-         */
-        static DWORD __stdcall FFXiServer(LPVOID lpParam);
+        static bool VerifyAccount(datasocket* sock, const std::string& server, std::string& username, std::string& password);
 
         /**
          * @brief Starts the local listen server to lobby server communications.
          *
-         * @param lpParam       Thread param object.
+         * @param socket        Socket reference to accept communications.
+         * @param client        Client Socket reference to listen on.
+         * @param server        Lobby server port.
+         * @param sharedState   Shared thread state (bool, mutex, condition_variable).
          *
-         * @return Non-important return.
+         * @return void.
          */
-        static DWORD __stdcall PolServer(LPVOID lpParam);
+        static void PolServer(SOCKET& socket, SOCKET& client, const std::string& lobbyServerPort, xiloader::SharedState& sharedState);
+
+        /**
+         * @brief Cleans up a socket via shutdown/close.
+         *
+         * @param socket        Socket reference.
+         * @param how           Shutdown send, recv, or both.
+         *
+         * @return void.
+         */
+        static void CleanupSocket(SOCKET& socket, int how);
     };
 
 }; // namespace xiloader
